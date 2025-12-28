@@ -59,7 +59,12 @@
                 cancelButtonText: 'Cancel',
                 success: (res) => {
                     my.alert({ content: 'Confirm result: ' + JSON.stringify(res) });
-                    const allowed = (res && (res.confirm === true || res === true || res.confirm === 'confirm'));
+                    const allowed = res && (
+                        res.confirm === true ||
+                        res === true ||
+                        res.confirm === 'confirm' ||
+                        res.ok === true
+                    );
                     if (!allowed) return;
                     my.alert({ content: 'Proceeding to authenticate...' });
                     authenticate().then(() => {
