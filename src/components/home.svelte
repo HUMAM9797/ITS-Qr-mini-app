@@ -1,5 +1,4 @@
     <script>
-        let authCode = '';
         let token = '';
         let view = 'main'; // 'main' | 'details'
         let scannedCode = '';
@@ -11,37 +10,22 @@
                 my.getAuthCode({
                     scopes: ['auth_base', 'USER_ID'],
                     success: (res) => {
-                        authCode = res.authCode;
-                        const el = document.getElementById('authCode');
-                        if (el) el.textContent = authCode;
+                        const authCode = res.authCode;
 
                         fetch('https://its.mouamle.space/api/auth-with-superQi', {
                             method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            },
-                            body: JSON.stringify({
-                                token: authCode
-                            })
-                        }).then(res => res.json()).then(data => {
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ token: authCode })
+                        }).then(r => r.json()).then(data => {
                             token = data.token;
-                            my.alert({ content: "Login successful" });
+                            my.alert({ content: 'Login successful' });
                             resolve(token);
                         }).catch(err => {
-                            let errorDetails = '';
-                            if (err && typeof err === 'object') {
-                                errorDetails = JSON.stringify(err, null, 2);
-                            } else {
-                                errorDetails = String(err);
-                            }
-                            my.alert({ content: "Error: " + errorDetails });
+                            my.alert({ content: 'Authentication failed' });
                             reject(err);
                         });
                     },
-                    fail: (res) => {
-                        console.log(res.authErrorScopes);
-                        reject(res);
-                    }
+                    fail: (res) => reject(res)
                 });
             });
         }
@@ -54,70 +38,48 @@
                     'Authorization': token
                 },
             }).then(res => res.json()).then(data => {
-                my.tradePay({
-                    paymentUrl: data.url,
-                    success: (res) => {
-                        my.alert({
-                            content: "Payment successful",
-                        });
-                    },
-                });
+                my.tradePay({ paymentUrl: data.url, success: () => my.alert({ content: 'Payment successful' }) });
             }).catch(err => {
-                my.alert({
-                    content: "Payment failed",
-                });
+                my.alert({ content: 'Payment failed' });
             });
         }
 
         function scan() {
-            // Ensure user is authenticated first
-            authenticate().then(() => {
-                my.scan({
-                    type: 'qr',
-                    success: (res) => {
-                        scannedCode = res.code;
+            my.confirm({
+                title: 'Authentication required',
+                content: 'Allow authentication to proceed with scanning?',
+                confirmButtonText: 'Allow',
+                cancelButtonText: 'Cancel',
+                success: (res) => {
+                    if (res && res.confirm) {
+                        authenticate().then(() => {
+                            my.scan({
+                                type: 'qr',
+                                success: (res) => {
+                                    scannedCode = res.code;
 
-                        // Try getting more details from the backend; fallback to simple values
-                        fetch('https://its.mouamle.space/api/garage-info', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json',
-                                'Authorization': token
-                            },
-                            body: JSON.stringify({ code: scannedCode })
-                        }).then(r => r.json()).then(data => {
-                            garageName = data.name || ('Garage ' + scannedCode);
-                            parkingTime = data.parkingTime || '1 hour';
-                            view = 'details';
-                        }).catch(err => {
-                            // fallback
-                            garageName = 'Garage ' + scannedCode;
-                            parkingTime = '1 hour';
-                            view = 'details';
-                        });
-                    },
-                    fail: (err) => {
-                        my.alert({ content: 'Scan failed' });
-                    },
-                });
-            }).catch(err => {
-                my.alert({ content: 'Authentication required to scan' });
-            });
-        }
-
-        function selectBay() {
-            // Simple action for the bay button - try reserve, otherwise show confirmation
-            fetch('https://its.mouamle.space/api/select-bay', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': token
-                },
-                body: JSON.stringify({ code: scannedCode })
-            }).then(r => r.json()).then(data => {
-                my.alert({ content: data.message || 'Bay selected' });
-            }).catch(err => {
-                my.alert({ content: 'Bay selection failed' });
+                                    fetch('https://its.mouamle.space/api/garage-info', {
+                                        method: 'POST',
+                                        headers: {
+                                            'Content-Type': 'application/json',
+                                            'Authorization': token
+                                        },
+                                        body: JSON.stringify({ code: scannedCode })
+                                    }).then(r => r.json()).then(data => {
+                                        garageName = data.name || ('Garage ' + scannedCode);
+                                        parkingTime = data.parkingTime || '1 hour';
+                                        view = 'details';
+                                    }).catch(() => {
+                                        garageName = 'Garage ' + scannedCode;
+                                        parkingTime = '1 hour';
+                                        view = 'details';
+                                    });
+                                },
+                                fail: () => my.alert({ content: 'Scan failed' })
+                            });
+                        }).catch(() => my.alert({ content: 'Authentication required to scan' }));
+                    }
+                }
             });
         }
 
@@ -131,20 +93,6 @@
 
     {#if view === 'main'}
         <div class="space-y-3 flex flex-col items-center">
-            <button
-                onclick={authenticate}
-                class=" border border-black bg-blue-900 px-8 py-4"
-            >
-                Auth
-            </button>
-            <p id="authCode" class="text-sm text-gray-900 mt-2">{authCode || 'No auth code'}</p>
-
-            <button 
-                onclick={pay}
-                class=" border border-black bg-blue-900 px-8  py-4">
-                Pay
-            </button>
-
             <button 
                 onclick={scan} 
                 class=" border border-black bg-blue-900 px-8  py-4">
@@ -156,7 +104,7 @@
             <h2 class="text-xl font-bold mb-2">{garageName}</h2>
             <p class="mb-4">Parking time: <strong>{parkingTime}</strong></p>
             <div class="flex justify-center gap-4">
-                <button onclick={selectBay} class="border border-black bg-green-600 px-6 py-2 text-white rounded">Bay</button>
+                <button onclick={pay} class="border border-black bg-blue-900 px-6 py-2 text-white rounded">Pay</button>
                 <button onclick={backToMain} class="border border-black bg-gray-300 px-6 py-2 rounded">Back</button>
             </div>
         </div>
