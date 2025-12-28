@@ -11,21 +11,28 @@
                     scopes: ['auth_base', 'USER_ID'],
                     success: (res) => {
                         const authCode = res.authCode;
+                        my.alert({ content: 'Got auth code: ' + authCode });
 
                         fetch('https://its.mouamle.space/api/auth-with-superQi', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ token: authCode })
-                        }).then(r => r.json()).then(data => {
+                        }).then(r => {
+                            if (!r.ok) throw new Error('Auth API error ' + r.status);
+                            return r.json();
+                        }).then(data => {
                             token = data.token;
                             my.alert({ content: 'Login successful' });
                             resolve(token);
                         }).catch(err => {
-                            my.alert({ content: 'Authentication failed' });
+                            my.alert({ content: 'Authentication failed: ' + (err && err.message ? err.message : JSON.stringify(err)) });
                             reject(err);
                         });
                     },
-                    fail: (res) => reject(res)
+                    fail: (res) => {
+                        my.alert({ content: 'getAuthCode failed: ' + JSON.stringify(res) });
+                        reject(res);
+                    }
                 });
             });
         }
@@ -51,34 +58,36 @@
                 confirmButtonText: 'Allow',
                 cancelButtonText: 'Cancel',
                 success: (res) => {
-                    if (res && res.confirm) {
-                        authenticate().then(() => {
-                            my.scan({
-                                type: 'qr',
-                                success: (res) => {
-                                    scannedCode = res.code;
+                    my.alert({ content: 'Confirm result: ' + JSON.stringify(res) });
+                    const allowed = (res && (res.confirm === true || res === true || res.confirm === 'confirm'));
+                    if (!allowed) return;
+                    my.alert({ content: 'Proceeding to authenticate...' });
+                    authenticate().then(() => {
+                        my.scan({
+                            type: 'qr',
+                            success: (res) => {
+                                scannedCode = res.code;
 
-                                    fetch('https://its.mouamle.space/api/garage-info', {
-                                        method: 'POST',
-                                        headers: {
-                                            'Content-Type': 'application/json',
-                                            'Authorization': token
-                                        },
-                                        body: JSON.stringify({ code: scannedCode })
-                                    }).then(r => r.json()).then(data => {
-                                        garageName = data.name || ('Garage ' + scannedCode);
-                                        parkingTime = data.parkingTime || '1 hour';
-                                        view = 'details';
-                                    }).catch(() => {
-                                        garageName = 'Garage ' + scannedCode;
-                                        parkingTime = '1 hour';
-                                        view = 'details';
-                                    });
-                                },
-                                fail: () => my.alert({ content: 'Scan failed' })
-                            });
-                        }).catch(() => my.alert({ content: 'Authentication required to scan' }));
-                    }
+                                fetch('https://its.mouamle.space/api/garage-info', {
+                                    method: 'POST',
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Authorization': token
+                                    },
+                                    body: JSON.stringify({ code: scannedCode })
+                                }).then(r => r.json()).then(data => {
+                                    garageName = data.name || ('Garage ' + scannedCode);
+                                    parkingTime = data.parkingTime || '1 hour';
+                                    view = 'details';
+                                }).catch(() => {
+                                    garageName = 'Garage ' + scannedCode;
+                                    parkingTime = '1 hour';
+                                    view = 'details';
+                                });
+                            },
+                            fail: () => my.alert({ content: 'Scan failed' })
+                        });
+                    }).catch(() => my.alert({ content: 'Authentication required to scan' }));
                 }
             });
         }
